@@ -1,0 +1,9 @@
+.escr-share-modal .escr-modal {
+    top: 25%;
+}
+.escr-share-modal .escr-text-field {
+    margin: 0;
+}
+.escr-share-modal input[type="text"] {
+    margin: 0 0 3px 3px;
+}

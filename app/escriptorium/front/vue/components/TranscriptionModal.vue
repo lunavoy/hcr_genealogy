@@ -1,0 +1,1363 @@
+<template>
+    <!-- eslint-disable vue/no-v-html, max-len -->
+    <div
+        id="trans-modal"
+        ref="transModal"
+        :class="{ modal: true, ['escr-line-modal']: !legacyModeEnabled }"
+        role="dialog"
+    >
+        <div
+            class="modal-dialog modal-xl"
+            role="document"
+        >
+            <div class="modal-content">
+                <div
+                    v-if="legacyModeEnabled"
+                    class="modal-header"
+                >
+                    <button
+                        v-if="readDirection == 'rtl'"
+                        id="next-btn"
+                        type="button"
+                        title="Next (up arrow)"
+                        class="btn btn-sm mr-1 btn-secondary"
+                        @click="editLine('next')"
+                    >
+                        <i class="fas fa-arrow-circle-left" />
+                    </button>
+                    <button
+                        v-else
+                        id="prev-btn"
+                        type="button"
+                        title="Previous (up arrow)"
+                        class="btn btn-sm mr-1 btn-secondary"
+                        @click="editLine('previous')"
+                    >
+                        <i class="fas fa-arrow-circle-left" />
+                    </button>
+
+                    <button
+                        v-if="readDirection == 'rtl'"
+                        id="prev-btn"
+                        type="button"
+                        title="Previous (down arrow)"
+                        class="btn btn-sm mr-1 btn-secondary"
+                        @click="editLine('previous')"
+                    >
+                        <i class="fas fa-arrow-circle-right" />
+                    </button>
+                    <button
+                        v-else
+                        id="next-btn"
+                        type="button"
+                        title="Next (down arrow)"
+                        class="btn btn-sm mr-1 btn-secondary"
+                        @click="editLine('next')"
+                    >
+                        <i class="fas fa-arrow-circle-right" />
+                    </button>
+                    <button
+                        class="btn btn-sm ml-2 mr-1"
+                        :class="{'btn-info': isVKEnabled, 'btn-outline-info': !isVKEnabled}"
+                        title="Toggle Virtual Keyboard for this document."
+                        @click="toggleVK"
+                    >
+                        <i class="fas fa-keyboard" />
+                    </button>
+
+                    <h5
+                        id="modal-label"
+                        class="modal-title ml-3"
+                    >
+                        Line #{{ line.order + 1 }}
+                    </h5>
+
+                    <button
+                        type="button"
+                        class="close"
+                        aria-label="Close"
+                        @click="close"
+                    >
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div
+                    v-else
+                    class="modal-header escr-line-modal-header"
+                >
+                    <h2>Line #{{ line.order + 1 }}</h2>
+                    <EscrButton
+                        color="text"
+                        :on-click="() => editLine(readDirection === 'rtl' ? 'next' : 'previous')"
+                        size="small"
+                    >
+                        <template #button-icon>
+                            <ArrowCircleLeftIcon />
+                        </template>
+                    </EscrButton>
+                    <EscrButton
+                        color="text"
+                        :on-click="() => editLine(readDirection === 'rtl' ? 'previous' : 'next')"
+                        size="small"
+                    >
+                        <template #button-icon>
+                            <ArrowCircleRightIcon />
+                        </template>
+                    </EscrButton>
+                    <div class="new-section with-separator">
+                        <ToggleButton
+                            class="escr-vk-toggle"
+                            color="text"
+                            size="small"
+                            :checked="isVKEnabled"
+                            :on-change="() => isVKEnabled = !isVKEnabled"
+                        >
+                            <template #button-icon>
+                                <KeyboardIcon />
+                            </template>
+                        </ToggleButton>
+                        <ToggleButton
+                            class="escr-baseline-toggle"
+                            color="text"
+                            size="small"
+                            :checked="isBaselineEditEnabled"
+                            :on-change="toggleBaselineEdit"
+                        >
+                            <template #button-icon>
+                                <PencilIcon />
+                            </template>
+                        </ToggleButton>
+                        <ToggleButton
+                            class="escr-cut-toggle"
+                            color="text"
+                            size="small"
+                            :disabled="!isBaselineEditEnabled"
+                            :checked="isCutMode"
+                            :on-change="toggleCutMode"
+                        >
+                            <template #button-icon>
+                                <ScissorsIcon />
+                            </template>
+                        </ToggleButton>
+                    </div>
+                    <div class="escr-line-modal-right">
+                        <EscrButton
+                            color="text"
+                            :on-click="() => close()"
+                            size="small"
+                        >
+                            <template #button-icon>
+                                <XIcon />
+                            </template>
+                        </EscrButton>
+                    </div>
+                </div>
+                <div :class="'modal-body ' + defaultTextDirection">
+                    <p
+                        v-if="line.mask == null"
+                        dir="ltr"
+                        class="text-warning"
+                    >
+                        No mask found for the line, preview unavailable!
+                        <span v-if="legacyModeEnabled">
+                            Calculate masks by hitting the green thumbs up button in the
+                            segmentation panel.
+                        </span>
+                    </p>
+                    <div
+                        id="modal-img-container"
+                        ref="modalImgContainer"
+                        width="80%"
+                    >
+                        <img
+                            id="line-img"
+                            :src="modalImgSrc"
+                            draggable="false"
+                            selectable="false"
+                        >
+                        <div class="overlay">
+                            <svg
+                                width="100%"
+                                height="100%"
+                            >
+                                <defs>
+                                    <mask id="modal-overlay">
+                                        <rect
+                                            width="100%"
+                                            height="100%"
+                                            fill="white"
+                                        />
+                                        <polygon points="" />
+                                    </mask>
+                                </defs>
+                                <rect
+                                    fill="grey"
+                                    opacity="0.5"
+                                    width="100%"
+                                    height="100%"
+                                    mask="url(#modal-overlay)"
+                                />
+                            </svg>
+                        </div>
+                        <!-- Baseline editing overlay: drawn in image-pixel coordinates,
+                             the <g> transform mirrors the <img> transform set in
+                             computeImgStyles (see baselineView) -->
+                        <svg
+                            v-show="isBaselineEditEnabled && line.baseline"
+                            class="baseline-editor-overlay"
+                            :class="{ 'cut-mode': isCutMode }"
+                            :width="baselineOverlayBox.width"
+                            :height="baselineOverlayBox.height"
+                            :viewBox="baselineOverlayViewBox"
+                            @mousedown="onOverlayMouseDown"
+                        >
+                            <g :transform="baselineOverlayTransform">
+                                <polygon
+                                    v-if="line.mask"
+                                    :points="pointsToString(line.mask)"
+                                    fill="none"
+                                    stroke="yellow"
+                                    stroke-width="2"
+                                    vector-effect="non-scaling-stroke"
+                                />
+                                <polyline
+                                    :points="pointsToString(activeBaseline)"
+                                    fill="none"
+                                    stroke="blue"
+                                    stroke-width="2"
+                                    vector-effect="non-scaling-stroke"
+                                />
+                                <circle
+                                    v-for="(pt, idx) in activeBaseline"
+                                    v-show="!isCutMode"
+                                    :key="'bl-pt-' + idx"
+                                    :cx="pt[0]"
+                                    :cy="pt[1]"
+                                    :r="pointRadius"
+                                    fill="blue"
+                                    stroke="white"
+                                    stroke-width="2"
+                                    vector-effect="non-scaling-stroke"
+                                    class="baseline-point"
+                                    :class="{ 'dragging': dragPointIndex === idx }"
+                                />
+                                <!-- selection rectangle while dragging in cut mode -->
+                                <rect
+                                    v-if="cutRect"
+                                    :x="cutRect.x"
+                                    :y="cutRect.y"
+                                    :width="cutRect.width"
+                                    :height="cutRect.height"
+                                    fill="rgba(255, 0, 0, 0.1)"
+                                    stroke="red"
+                                    stroke-width="1"
+                                    vector-effect="non-scaling-stroke"
+                                />
+                            </g>
+                        </svg>
+                    </div>
+
+                    <!-- TODO: Refactor to not use refs (use vuex store or component data) -->
+                    <div
+                        id="trans-input-container"
+                        ref="transInputContainer"
+                    >
+                        <input
+                            v-if="mainTextDirection != 'ttb'"
+                            id="trans-input"
+                            ref="transInput"
+                            v-model.lazy="localTranscription"
+                            name="content"
+                            class="form-control mb-2 display-virtual-keyboard"
+                            autocomplete="off"
+                            autofocus
+                            @keyup.down="editLine('next')"
+                            @keyup.up="editLine('previous')"
+                            @keyup.enter="editLine('next')"
+                        >
+                        <!--Hidden input for ttb text: -->
+                        <input
+                            v-else
+                            id="trans-input"
+                            ref="transInput"
+                            v-model.lazy="localTranscription"
+                            name="content"
+                            type="hidden"
+                            autocomplete="off"
+                        >
+                        <!-- in this case, input field is replaced by: -->
+                        <div
+                            v-if="mainTextDirection == 'ttb'"
+                            id="textInputWrapper"
+                        >
+                            <div
+                                id="textInputBorderWrapper"
+                                class="form-control mb-2"
+                            >
+                                <div
+                                    id="vertical_text_input"
+                                    contenteditable="true"
+                                    class="display-virtual-keyboard"
+                                    @blur="localTranscription = $event.target.textContent"
+                                    @keyup="recomputeInputCharsScaleY()"
+                                    @keyup.right="editLine('next')"
+                                    @keyup.left="editLine('previous')"
+                                    @keyup.enter="cleanHTMLTags();recomputeInputCharsScaleY();editLine('next')"
+                                    v-html="localTranscription"
+                                />
+                            </div>
+                        </div>
+
+                        <small
+                            v-if="line.currentTrans && line.currentTrans.version_updated_at"
+                            class="form-text text-muted"
+                        >
+                            <span>by {{ line.currentTrans.version_author }} ({{ line.currentTrans.version_source }})</span>
+                            <span>on {{ momentDate }}</span>
+                        </small>
+                    </div>
+
+                    <hr v-if="!legacyModeEnabled">
+
+                    <!-- transcription comparison -->
+                    <details
+                        v-if="!legacyModeEnabled"
+                        class="escr-compare"
+                    >
+                        <summary dir="ltr">
+                            <span>Transcription comparison</span>
+                            <TranscriptionSelector />
+                        </summary>
+                        <div
+                            v-if="comparedTranscriptions.length"
+                            id="comparison"
+                            class="compare-show"
+                        >
+                            <div
+                                class="d-table"
+                            >
+                                <div
+                                    v-for="trans in otherTranscriptions"
+                                    :key="'TrC' + trans.pk"
+                                    class="d-table-row"
+                                >
+                                    <div
+                                        class="d-table-cell col"
+                                        v-html="comparedContent(trans.content)"
+                                    />
+                                    <div
+                                        class="d-table-cell text-muted text-nowrap col"
+                                        title="Transcription name"
+                                    >
+                                        <small>
+                                            {{ trans.name }}
+                                            <span
+                                                v-if="trans.pk == selectedTranscription"
+                                            >
+                                                (current)
+                                            </span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span
+                            v-else
+                            class="escr-no-content"
+                        >
+                            No transcriptions selected
+                        </span>
+                    </details>
+                    <div
+                        v-else-if="comparedTranscriptions.length"
+                        class="card history-block mt-2"
+                    >
+                        <div class="card-header">
+                            <a
+                                href="#"
+                                class="card-toggle collapsed"
+                                data-toggle="collapse"
+                                data-target=".compare-show"
+                            >
+                                <span>Toggle transcription comparison</span>
+                            </a>
+
+                            <button
+                                title="Help."
+                                data-toggle="collapse"
+                                data-target="#compare-help"
+                                class="btn btn-info fas fa-question help nav-item ml-2"
+                            />
+                            <div
+                                id="compare-help"
+                                class="alert alert-primary help-text collapse"
+                            >
+                                <HelpCompareTranscriptions />
+                            </div>
+                        </div>
+                        <div
+                            id="comparison"
+                            class="compare-show card-body collapse"
+                        >
+                            <div class="d-table">
+                                <div
+                                    v-for="trans in otherTranscriptions"
+                                    :key="'TrC' + trans.pk"
+                                    class="d-table-row"
+                                >
+                                    <div
+                                        class="d-table-cell col"
+                                        v-html="comparedContent(trans.content)"
+                                    />
+                                    <div
+                                        class="d-table-cell text-muted text-nowrap col"
+                                        title="Transcription name"
+                                    >
+                                        <small>
+                                            {{ trans.name }}
+                                            <span v-if="trans.pk == selectedTranscription">(current)</span></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr v-if="!legacyModeEnabled">
+
+                    <!-- versioning/history -->
+                    <details v-if="!legacyModeEnabled">
+                        <summary dir="ltr">
+                            <span>Transcription history</span>
+                        </summary>
+                        <div
+                            v-if="line.currentTrans &&
+                                line.currentTrans.versions &&
+                                line.currentTrans.versions.length"
+                            id="history"
+                            class="history-show"
+                        >
+                            <div class="d-table">
+                                <LineVersion
+                                    v-for="(version, index) in line.currentTrans.versions"
+                                    :key="version.revision"
+                                    :previous="line.currentTrans.versions[index+1]"
+                                    :version="version"
+                                    :line="line"
+                                    :legacy-mode-enabled="legacyModeEnabled"
+                                />
+                            </div>
+                        </div>
+                        <span
+                            v-else
+                            class="escr-no-content"
+                        >
+                            No history to display
+                        </span>
+                    </details>
+                    <div
+                        v-else-if="line.currentTrans &&
+                            line.currentTrans.versions &&
+                            line.currentTrans.versions.length"
+                        class="card history-block mt-2"
+                    >
+                        <div class="card-header">
+                            <a
+                                href="#"
+                                class="card-toggle collapsed"
+                                data-toggle="collapse"
+                                data-target=".history-show"
+                            >
+                                <span>Toggle history</span>
+                            </a>
+                            <button
+                                title="Help."
+                                data-toggle="collapse"
+                                data-target="#versions-help"
+                                class="btn btn-info fas fa-question help nav-item ml-2 collapsed"
+                            />
+                            <div
+                                id="versions-help"
+                                class="alert alert-primary help-text collapse"
+                            >
+                                <HelpVersions />
+                            </div>
+                        </div>
+                        <div
+                            id="history"
+                            class="history-show card-body collapse"
+                        >
+                            <div
+                                v-if="line.currentTrans && line.currentTrans.versions"
+                                class="d-table"
+                            >
+                                <LineVersion
+                                    v-for="(version, index) in line.currentTrans.versions"
+                                    :key="version.revision"
+                                    :previous="line.currentTrans.versions[index+1]"
+                                    :version="version"
+                                    :line="line"
+                                    :legacy-mode-enabled="legacyModeEnabled"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+import { mapState } from "vuex";
+import ArrowCircleLeftIcon from "./Icons/ArrowCircleLeftIcon/ArrowCircleLeftIcon.vue";
+import ArrowCircleRightIcon from "./Icons/ArrowCircleRightIcon/ArrowCircleRightIcon.vue";
+import EscrButton from "./Button/Button.vue";
+import KeyboardIcon from "./Icons/KeyboardIcon/KeyboardIcon.vue";
+import LineVersion from "./LineVersion.vue";
+import HelpVersions from "./HelpVersions.vue";
+import HelpCompareTranscriptions from "./HelpCompareTranscriptions.vue";
+import PencilIcon from "./Icons/PencilIcon/PencilIcon.vue";
+import ScissorsIcon from "./Icons/ScissorsIcon/ScissorsIcon.vue";
+import ToggleButton from "./ToggleButton/ToggleButton.vue";
+import TranscriptionSelector from "./TranscriptionSelector/TranscriptionSelector.vue";
+import XIcon from "./Icons/XIcon/XIcon.vue";
+import "./TranscriptionModal.css";
+
+export default Vue.extend({
+    components: {
+        ArrowCircleLeftIcon,
+        ArrowCircleRightIcon,
+        EscrButton,
+        KeyboardIcon,
+        LineVersion,
+        HelpVersions,
+        HelpCompareTranscriptions,
+        PencilIcon,
+        ScissorsIcon,
+        ToggleButton,
+        TranscriptionSelector,
+        XIcon,
+    },
+    props: {
+        /**
+         * Whether or not legacy mode is enabled by the user.
+         */
+        legacyModeEnabled: {
+            type: Boolean,
+            required: true,
+        },
+    },
+    data() {
+        return {
+            isVKEnabled: false,
+            isBaselineEditEnabled: false,
+            // cut mode of the baseline overlay: a click on the baseline cuts it
+            isCutMode: false,
+            // view transform of the line preview image, set by computeImgStyles:
+            // left/top/angle mirror the <img> transform, ratio is the display scale
+            baselineView: null,
+            // baseline (in image coordinates) while a point is being dragged
+            baselineDraft: null,
+            dragPointIndex: null,
+            dragOffset: null,
+            // cut-mode selection while dragging, in image coordinates
+            cutDrag: null,
+        }
+    },
+    computed: {
+        ...mapState({
+            allTranscriptions: (state) => state.transcriptions.all,
+            comparedTranscriptions: (state) => state.transcriptions.comparedTranscriptions,
+            defaultTextDirection: (state) => state.document.defaultTextDirection,
+            documentId: (state) => state.document.id,
+            enabledVKs: (state) => state.document.enabledVKs,
+            image: (state) => state.parts.image,
+            mainTextDirection: (state) => state.document.mainTextDirection,
+            readDirection: (state) => state.document.readDirection,
+            selectedTranscription: (state) => state.transcriptions.selectedTranscription,
+            transcriptionFont: (state) => state.document.transcriptionFont,
+        }),
+        line() {
+            const lines = this.$store.state.lines;
+            const edited = lines.editedLine;
+            if (!edited) return edited;
+            // Resolve the line from the store's live list rather than relying on
+            // the `editedLine` reference: some entry points (Elements panel)
+            // dispatch a shallow copy, and the lines/update mutation updates the
+            // list entry in place, so the copy would never see e.g. a
+            // recalculated mask.
+            return lines.all.find((l) => l.pk == edited.pk) || edited;
+        },
+        momentDate() {
+            return moment.tz(this.line.currentTrans.version_updated_at, this.timeZone);
+        },
+        modalImgSrc() {
+            if (this.image.uri.endsWith(".tif") ||
+                 this.image.uri.endsWith(".tiff")) {
+                // can't display tifs so fallback to large thumbnail
+                return this.image.thumbnails.large;
+            } else {
+                return this.image.uri;
+            }
+        },
+        otherTranscriptions() {
+            let a = Object
+                .keys(this.line.transcriptions)
+                .filter((pk)=>this.comparedTranscriptions
+                    .includes(parseInt(pk)))
+                .map((pk)=>{ return {
+                    pk: pk,
+                    name: this.allTranscriptions.find((e)=>e.pk==pk).name,
+                    content: this.line.transcriptions[pk].content
+                }; });
+            return a;
+        },
+        localTranscription: {
+            get: function() {
+                return this.line.currentTrans && this.line.currentTrans.content || "";
+            },
+            set: async function(newValue) {
+                let oldValue = this.line.currentTrans.content;
+                if (this.$refs.transInput.value != newValue) {
+                    // Note: better way to do that?
+                    this.$refs.transInput.value = newValue;
+                    this.computeStyles();
+                }
+
+                if (oldValue != newValue) {
+                    await this.$store.dispatch(
+                        "transcriptions/updateLineTranscriptionVersion",
+                        { line: this.line, content: newValue },
+                    );
+                }
+            }
+        },
+        activeBaseline() {
+            return this.baselineDraft || (this.line && this.line.baseline) || [];
+        },
+        baselineOverlayBox() {
+            const view = this.baselineView;
+            if (!view || !this.image || !this.image.size) return { width: 0, height: 0 };
+            return {
+                width: this.image.size[0] * view.ratio,
+                height: this.image.size[1] * view.ratio,
+            };
+        },
+        baselineOverlayViewBox() {
+            if (!this.image || !this.image.size) return "0 0 100 100";
+            return `0 0 ${this.image.size[0]} ${this.image.size[1]}`;
+        },
+        baselineOverlayTransform() {
+            const view = this.baselineView;
+            if (!view || !this.image || !this.image.size) return "";
+            const [imgW, imgH] = this.image.size;
+            // the <img> transform (translate + rotate about the image center, in
+            // display pixels) expressed in image-pixel units, hence the /ratio
+            return `translate(${view.left / view.ratio} ${view.top / view.ratio})`
+                + ` rotate(${view.angle}, ${imgW / 2}, ${imgH / 2})`;
+        },
+        pointRadius() {
+            const view = this.baselineView;
+            return view ? 6 / view.ratio : 6;
+        },
+        cutRect() {
+            const d = this.cutDrag;
+            if (!d) return null;
+            return {
+                x: Math.min(d.x1, d.x2),
+                y: Math.min(d.y1, d.y2),
+                width: Math.abs(d.x2 - d.x1),
+                height: Math.abs(d.y2 - d.y1),
+            };
+        },
+    },
+    watch: {
+        line() {
+            this.cancelBaselineDrag();
+            this.cancelCutDrag();
+            this.computeStyles();
+        },
+        "line.mask"() {
+            // The mask was recalculated in the store (e.g. after a baseline
+            // edit); reframe the preview and redraw the overlay. The `line`
+            // watcher does not fire here because the line reference is stable.
+            this.computeStyles();
+        },
+        enabledVKs() {
+            this.isVKEnabled = this.enabledVKs.indexOf(this.documentId) != -1 || false;
+        }
+    },
+    created() {
+        $(document).on("hide.bs.modal", "#trans-modal", function(_ev) {
+            if (this.localTranscription != this.$refs.transInput.value
+                && !confirm("You have unsaved data, are you sure you want to close the modal?")) {
+                return false;
+            }
+
+            if (this.isVKEnabled) {
+                for (const input of [...document.getElementsByClassName(
+                    "display-virtual-keyboard",
+                )])
+                    input.blur();
+            }
+            this.$store.dispatch("lines/toggleLineEdition", null);
+
+            // make sure that typing in the input does not trigger keyboard shortcuts
+            this.$store.commit("document/setBlockShortcuts", false);
+        }.bind(this));
+
+        $(document).on("show.bs.modal", "#trans-modal", function(_ev) {
+            this.$store.commit("document/setBlockShortcuts", true);
+        }.bind(this));
+
+        this.timeZone = moment.tz.guess();
+    },
+    deactivated() {
+        // make sure the modal is cleanly closed when the panel is hidden
+        $(this.$refs.transModal).modal("hide");
+    },
+    destroyed() {
+        this.cancelBaselineDrag();
+        this.cancelCutDrag();
+        // unbind all events to avoid duplicating them
+        $(document).off("hide.bs.modal");
+        $(document).off("show.bs.modal");
+    },
+    mounted() {
+        $(this.$refs.transModal).modal({show: true});
+        $(this.$refs.transModal).draggable({handle: ".modal-header"});
+        $(this.$refs.transModal).resizable();
+        this.computeStyles();
+        let modele = this;
+
+        let input = this.$refs.transInput;
+
+        // no need to make focus on hidden input with a ttb text
+        if(this.mainTextDirection != "ttb"){
+            input.focus();
+        } else {
+            // avoid some br or other html tag for a copied text
+            // on an editable input div (vertical_text_input):
+            //
+            document.getElementById("vertical_text_input").addEventListener("paste", function(e) {
+
+                // cancel paste to treat its content before inserting it
+                e.preventDefault();
+
+                // get text representation of clipboard
+                var text = (e.originalEvent || e).clipboardData.getData("text/plain");
+                this.innerHTML = text;
+                modele.recomputeInputCharsScaleY();
+
+            }, false);
+        }
+
+        this.isVKEnabled = this.enabledVKs.indexOf(this.documentId) != -1 || false;
+        if (this.isVKEnabled)
+            for (const input of [...document.getElementsByClassName("display-virtual-keyboard")])
+                enableVirtualKeyboard(input);
+    },
+    methods: {
+        close() {
+            $(this.$refs.transModal).modal("hide");
+        },
+
+        toggleBaselineEdit(event) {
+            this.isBaselineEditEnabled = event.target.checked;
+            if (!this.isBaselineEditEnabled) {
+                this.isCutMode = false;
+                this.cancelCutDrag();
+            }
+        },
+
+        toggleCutMode(event) {
+            this.isCutMode = event.target.checked;
+        },
+
+        onOverlayMouseDown(event) {
+            if (this.isCutMode) {
+                this.startCutDrag(event);
+            } else {
+                this.startBaselineDrag(event);
+            }
+        },
+
+        startCutDrag(event) {
+            if (event.button !== 0 || !this.baselineView) return;
+            if (!this.line || !this.line.baseline) return;
+            const pos = this.eventToImageCoords(event);
+            if (!pos) return;
+            this.cutDrag = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y };
+            document.addEventListener("mousemove", this.onCutDragMove);
+            document.addEventListener("mouseup", this.onCutDragEnd);
+            event.preventDefault();
+        },
+
+        onCutDragMove(event) {
+            if (!this.cutDrag) return;
+            const pos = this.eventToImageCoords(event);
+            if (!pos) return;
+            this.cutDrag.x2 = pos.x;
+            this.cutDrag.y2 = pos.y;
+        },
+
+        onCutDragEnd() {
+            const drag = this.cutDrag;
+            this.cancelCutDrag();
+            if (!drag || !this.baselineView) return;
+            // a plain click without a real drag does nothing
+            if (Math.hypot(drag.x2 - drag.x1, drag.y2 - drag.y1) * this.baselineView.ratio < 5)
+                return;
+            this.performCut(drag);
+        },
+
+        cancelCutDrag() {
+            document.removeEventListener("mousemove", this.onCutDragMove);
+            document.removeEventListener("mouseup", this.onCutDragEnd);
+            this.cutDrag = null;
+        },
+
+        pointInRect(p, rect) {
+            return p[0] >= rect.x1 && p[0] <= rect.x2
+                && p[1] >= rect.y1 && p[1] <= rect.y2;
+        },
+
+        // all points where segment p-q crosses the rectangle boundary,
+        // ordered along the segment (0, 1, or 2). A straight segment that
+        // merely passes through the box has both endpoints outside, so this
+        // catches crossings the endpoint test would miss.
+        segmentRectCrossings(p, q, rect) {
+            const dx = q[0] - p[0];
+            const dy = q[1] - p[1];
+            const ts = [];
+            if (dx !== 0) {
+                for (const x of [rect.x1, rect.x2]) {
+                    const t = (x - p[0]) / dx;
+                    if (t >= 0 && t <= 1) {
+                        const y = p[1] + t * dy;
+                        if (y >= rect.y1 && y <= rect.y2) ts.push(t);
+                    }
+                }
+            }
+            if (dy !== 0) {
+                for (const y of [rect.y1, rect.y2]) {
+                    const t = (y - p[1]) / dy;
+                    if (t >= 0 && t <= 1) {
+                        const x = p[0] + t * dx;
+                        if (x >= rect.x1 && x <= rect.x2) ts.push(t);
+                    }
+                }
+            }
+            ts.sort((a, b) => a - b);
+            const result = [];
+            for (const t of ts) {
+                // drop duplicates from hitting a rectangle corner
+                if (result.length && Math.abs(t - result[result.length - 1].t) < 1e-6)
+                    continue;
+                result.push({
+                    t,
+                    point: [Math.round(p[0] + t * dx), Math.round(p[1] + t * dy)],
+                });
+            }
+            return result;
+        },
+
+        // points where the baseline crosses the selection rectangle boundary,
+        // ordered along the baseline
+        baselineCrossings(baseline, rect) {
+            const crossings = [];
+            for (let i = 0; i < baseline.length - 1; i++) {
+                for (const c of this.segmentRectCrossings(baseline[i], baseline[i + 1], rect)) {
+                    crossings.push({ index: i, point: c.point });
+                }
+            }
+            return crossings;
+        },
+
+        removeConsecutiveDuplicates(points) {
+            return points.filter((pt, i) =>
+                i === 0 || pt[0] !== points[i - 1][0] || pt[1] !== points[i - 1][1]);
+        },
+
+        // cuts the baseline with the dragged selection rectangle: the part of
+        // the baseline inside the rectangle is removed. If that removes the
+        // middle of the line, it splits - this line keeps the left part, the
+        // right part becomes a new line with an empty transcription (same
+        // semantics as the segmentation canvas cut tool)
+        performCut(drag) {
+            const baseline = this.line.baseline;
+            if (!baseline || baseline.length < 2) return;
+            const rect = {
+                x1: Math.min(drag.x1, drag.x2),
+                y1: Math.min(drag.y1, drag.y2),
+                x2: Math.max(drag.x1, drag.x2),
+                y2: Math.max(drag.y1, drag.y2),
+            };
+            const crossings = this.baselineCrossings(baseline, rect);
+            if (!crossings.length) return;
+            const first = crossings[0];
+            const last = crossings[crossings.length - 1];
+            let before = this.removeConsecutiveDuplicates(
+                [...baseline.slice(0, first.index + 1), first.point]);
+            let after = this.removeConsecutiveDuplicates(
+                [last.point, ...baseline.slice(last.index + 1)]);
+            // only keep the tails that actually lie outside the rectangle
+            if (this.pointInRect(baseline[0], rect)) before = null;
+            if (this.pointInRect(baseline[baseline.length - 1], rect)) after = null;
+            if (before && before.length < 2) before = null;
+            if (after && after.length < 2) after = null;
+            if (!before && !after) return;
+
+            const region = this.line.region;
+            const type = this.line.type;
+            const saveLine = (newBaseline) =>
+                this.$store.dispatch("lines/bulkUpdate", [{
+                    pk: this.line.pk,
+                    baseline: newBaseline,
+                    mask: this.line.mask,
+                    region: region,
+                    type: type,
+                }]);
+            if (before && after) {
+                this.$store.dispatch("lines/bulkCreate", {
+                    lines: [{
+                        // no pk: the serializer rejects an explicit null
+                        baseline: after,
+                        region: region,
+                        type: type,
+                    }],
+                    transcription: this.selectedTranscription,
+                })
+                    .then(() => saveLine(before))
+                    .catch((err) => {
+                        console.error("Failed to split line:", err);
+                    });
+            } else {
+                saveLine(before || after).catch((err) => {
+                    console.error("Failed to cut line end:", err);
+                });
+            }
+        },
+
+        // convert a mouse event to image-pixel coordinates by inverting the
+        // transform the preview image is displayed with (see computeImgStyles)
+        eventToImageCoords(event) {
+            const view = this.baselineView;
+            const container = this.$refs.modalImgContainer;
+            if (!view || !container || !this.image || !this.image.size) return null;
+            const rect = container.getBoundingClientRect();
+            const [imgW, imgH] = this.image.size;
+            const px = (event.clientX - rect.left - view.left) / view.ratio;
+            const py = (event.clientY - rect.top - view.top) / view.ratio;
+            const rad = (-view.angle * Math.PI) / 180;
+            const dx = px - imgW / 2;
+            const dy = py - imgH / 2;
+            return {
+                x: imgW / 2 + dx * Math.cos(rad) - dy * Math.sin(rad),
+                y: imgH / 2 + dx * Math.sin(rad) + dy * Math.cos(rad),
+            };
+        },
+
+        pointsToString(points) {
+            return (points || []).map((pt) => `${pt[0]},${pt[1]}`).join(" ");
+        },
+
+        startBaselineDrag(event) {
+            if (event.button !== 0 || !this.baselineView) return;
+            if (!this.line || !this.line.baseline) return;
+            const pos = this.eventToImageCoords(event);
+            if (!pos) return;
+            const baseline = this.line.baseline;
+            let index = -1;
+            let nearest = Infinity;
+            baseline.forEach((pt, i) => {
+                const dist = Math.hypot(pt[0] - pos.x, pt[1] - pos.y);
+                if (dist < nearest) {
+                    nearest = dist;
+                    index = i;
+                }
+            });
+            // grab radius of 25 screen pixels
+            if (index < 0 || nearest * this.baselineView.ratio > 25) return;
+            this.baselineDraft = baseline.map((pt) => [pt[0], pt[1]]);
+            this.dragPointIndex = index;
+            this.dragOffset = {
+                x: baseline[index][0] - pos.x,
+                y: baseline[index][1] - pos.y,
+            };
+            document.addEventListener("mousemove", this.onBaselineDragMove);
+            document.addEventListener("mouseup", this.onBaselineDragEnd);
+            event.preventDefault();
+        },
+
+        onBaselineDragMove(event) {
+            if (this.dragPointIndex === null || !this.baselineDraft) return;
+            const pos = this.eventToImageCoords(event);
+            if (!pos) return;
+            // $set: replacing an array item by index is not reactive in Vue 2,
+            // and the overlay must follow the pointer live while dragging.
+            this.$set(this.baselineDraft, this.dragPointIndex, [
+                Math.round(pos.x + this.dragOffset.x),
+                Math.round(pos.y + this.dragOffset.y),
+            ]);
+        },
+
+        onBaselineDragEnd() {
+            const draft = this.baselineDraft;
+            this.cancelBaselineDrag();
+            if (!draft) return;
+            const original = this.line && this.line.baseline;
+            if (!original || JSON.stringify(draft) === JSON.stringify(original)) return;
+            this.$store
+                .dispatch("lines/bulkUpdate", [{
+                    pk: this.line.pk,
+                    baseline: draft,
+                    mask: this.line.mask,
+                    region: this.line.region,
+                    type: this.line.type,
+                }])
+                .catch((err) => {
+                    console.error("Failed to update baseline:", err);
+                });
+        },
+
+        cancelBaselineDrag() {
+            document.removeEventListener("mousemove", this.onBaselineDragMove);
+            document.removeEventListener("mouseup", this.onBaselineDragEnd);
+            this.baselineDraft = null;
+            this.dragPointIndex = null;
+            this.dragOffset = null;
+        },
+
+        editLine(direction) {
+            // making sure the line is saved (it isn't in case of shortcut usage)
+            this.localTranscription = this.$refs.transInput.value;
+            this.$store.dispatch("lines/editLine", direction);
+        },
+
+        cleanHTMLTags(){
+            document.getElementById("vertical_text_input").innerHTML =
+                document.getElementById("vertical_text_input").textContent;
+        },
+        recomputeInputCharsScaleY(){
+
+            let inputHeight = document.getElementById("vertical_text_input").clientHeight;
+            let wrapperHeight = document.getElementById("textInputBorderWrapper").clientHeight;
+            let textScaleY = wrapperHeight / (inputHeight + 10);
+
+            // to avoid input text outside the border box:
+            if(inputHeight > wrapperHeight)
+                document.getElementById("vertical_text_input").style.transform =
+                    "scaleY(" + textScaleY + ")";
+        },
+        comparedContent(content) {
+            if (!this.line.currentTrans) return;
+            let diff = Diff.diffChars(this.line.currentTrans.content, content);
+            return diff.map(function(part){
+                if (part.removed) {
+                    return '<span class="cmp-del">'+part.value+"</span>";
+                } else if (part.added) {
+                    return '<span class="cmp-add">'+part.value+"</span>";
+                } else {
+                    return part.value;
+                }
+            }.bind(this)).join("");
+        },
+
+        getLineAngle() {
+            if (!this.line) return 0;
+            let p1, p2;
+            if (this.line.baseline && this.line.baseline.length >= 2) {
+                p1 = this.line.baseline[0];
+                p2 = this.line.baseline[this.line.baseline.length-1];
+            } else if (this.line.mask && this.line.mask.length > 0) {
+                // fake baseline from left most to right most points in mask
+                p1 = this.line.mask.reduce((minPt, curPt) => (curPt[0] < minPt[0]) ? curPt : minPt);
+                p2 = this.line.mask.reduce((maxPt, curPt) => (curPt[0] > maxPt[0]) ? curPt : maxPt);
+            } else {
+                return 0;
+            }
+
+            return Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * 180 / Math.PI;
+        },
+
+        getRotatedLineBBox() {
+            // Guard against this.line or this.image being undefined during rapid line changes
+            if (!this.line || !this.image) {
+                return {width: 100, height: 50, top: 0, left: 0, angle: 0};
+            }
+
+            // create temporary polygon to calculate the line bounding box
+            let maskPoints = "";
+            if (this.line.mask && this.line.mask.length > 0) {
+                maskPoints = this.line.mask.map(
+                    (pt) => {
+                        if (!pt) return "0,0";
+                        return Math.round(pt[0])+ ","+ Math.round(pt[1]);
+                    }).join(" ");
+            } else {
+                // No mask available - return a default bbox
+                return {width: 100, height: 50, top: 0, left: 0, angle: 0};
+            }
+            let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            let tmppoly = document.createElementNS("http://www.w3.org/2000/svg",
+                "polygon");
+            tmppoly.setAttributeNS(null, "points", maskPoints);
+            tmppoly.setAttributeNS(null, "fill", "red");
+
+            // calculate rotation needed to get the line horizontal
+            let target_angle = 0;  // all lines should be topologically ltr
+            if(this.mainTextDirection == "ttb") // add a 90 angle for vertical texts
+                target_angle = 90;
+            let angle = target_angle - this.getLineAngle();
+
+            // apply it to the polygon and get the resulting bbox
+            let transformOrigin =  this.image.size[0]/2+"px "+this.image.size[1]/2+"px";
+            tmppoly.style.transformOrigin = transformOrigin;
+            tmppoly.style.transform = "rotate("+angle+"deg)";
+            svg.appendChild(tmppoly);
+            document.body.appendChild(svg);
+            let bbox = tmppoly.getBoundingClientRect();
+            let width = bbox.width;
+            let height = bbox.height
+            let top = bbox.top - svg.getBoundingClientRect().top;
+            let left = bbox.left - svg.getBoundingClientRect().left;
+            document.body.removeChild(svg); // done its job
+            return {width: width, height: height, top: top, left: left, angle: angle};
+        },
+
+        computeImgStyles(bbox, ratio, lineHeight, hContext) {
+            // Guard against this.line being undefined during rapid line changes
+            if (!this.line) return;
+
+            let modalImgContainer = this.$refs.modalImgContainer;
+            let img = modalImgContainer.querySelector("img#line-img");
+
+            let context = hContext*lineHeight;
+            let visuHeight = lineHeight + 2*context;
+
+            if(this.mainTextDirection != "ttb"){
+                modalImgContainer.style.height = visuHeight+"px";
+            }else{
+                modalImgContainer.style.width = visuHeight+"px";
+                modalImgContainer.style.display = "inline-block";
+                modalImgContainer.style.verticalAlign = "top";
+            }
+            let top = -(bbox.top*ratio - context);
+            let left = -(bbox.left*ratio - context);
+
+            // if text direction is rtl and the line doesn't take all the space,
+            // align it to the right
+            if (modalImgContainer.clientWidth - 2*context > bbox.width*ratio
+                && this.defaultTextDirection == "rtl") {
+                left += modalImgContainer.clientWidth - 2*context - bbox.width*ratio;
+            }
+
+            // modalImgContainer.style.transform = 'scale('+ratio+')';
+
+            let imgWidth = this.image.size[0]*ratio +"px";
+            let transformOrigin =  this.image.size[0]*ratio/2+"px "+this.image.size[1]*ratio/2+"px";
+            let transform = "translate("+left+"px, "+top+"px) rotate("+bbox.angle+"deg)";
+            img.style.width = imgWidth;
+            img.style.transformOrigin = transformOrigin;
+            img.style.transform = transform;
+
+            // Overlay
+            let overlay = modalImgContainer.querySelector(".overlay");
+            if (this.line?.mask) {
+                let maskPoints = this.line.mask.map(
+                    (pt) => Math.round(pt[0]*ratio)+ ","+
+                        Math.round(pt[1]*ratio)).join(" ");
+                let polygon = overlay.querySelector("polygon");
+                polygon.setAttribute("points", maskPoints);
+                overlay.style.width = imgWidth;
+                overlay.style.height = this.image.size[1]*ratio+"px";
+                overlay.style.transformOrigin = transformOrigin;
+                overlay.style.transform = transform;
+                overlay.classList.add("show");
+            } else {
+                // TODO: fake mask?!
+                overlay.classList.remove("show");
+            }
+
+            // remember the view transform for the baseline editing overlay
+            this.baselineView = {
+                left,
+                top,
+                angle: bbox.angle,
+                ratio,
+            };
+        },
+
+        computeInputStyles(bbox, ratio, lineHeight, hContext) {
+            // Content input
+            let container = this.$refs.transInputContainer;
+            let input = container.querySelector("#trans-input");
+            let verticalTextInput;
+
+            // note: input is not up to date yet
+            let content = this.line.currentTrans && this.line.currentTrans.content || "";
+            let ruler = document.createElement("span");
+            ruler.style.position = "absolute";
+            ruler.style.visibility = "hidden";
+            ruler.textContent = content;
+            ruler.style.whiteSpace="nowrap"
+
+            if(this.mainTextDirection == "ttb"){
+                // put the container inline for vertical transcription:
+                container.style.display = "inline-block";
+                verticalTextInput = container.querySelector("#vertical_text_input");
+                // apply vertical writing style to the ruler:
+                ruler.style.writingMode = "vertical-lr";
+                ruler.style.textOrientation = "upright";
+            }
+
+            container.appendChild(ruler);
+
+            let context = hContext*lineHeight;
+            // Note could depend on the script
+            let fontSize = Math.max(15, Math.round(lineHeight*0.7));
+            ruler.style.fontSize = fontSize+"px";
+
+            let font = this.transcriptionFont || {};
+            let sizeFactor = font.input_height || 1.1;
+            // empty string drops the inline style and falls back to the stylesheet
+            let em = (value) => value ? value+"em" : "";
+
+            if(this.mainTextDirection != "ttb"){
+                input.style.fontSize = fontSize+"px";
+                input.style.height = Math.round(fontSize*sizeFactor)+"px";
+                input.style.lineHeight = em(font.line_height);
+                input.style.paddingTop = em(font.input_padding_top);
+                input.style.paddingBottom = em(font.input_padding_bottom);
+                input.style.marginTop = em(font.input_margin_top);
+                input.style.marginBottom = em(font.input_margin_bottom);
+                input.style.verticalAlign = font.input_vertical_align || "";
+            }else{
+                verticalTextInput.style.fontSize = fontSize+"px";
+                verticalTextInput.style.width = Math.round(fontSize*sizeFactor)+"px";
+            }
+
+            if (this.readDirection == "rtl") {
+                container.style.marginRight = context+"px";
+            } else {
+                // left to right
+                // TODO: deal with other directions
+                container.style.marginLeft = context+"px";
+            }
+            if(this.mainTextDirection != "ttb"){
+                if (content) {
+                    let lineWidth = bbox.width*ratio;
+                    var scaleX = Math.min(5,  lineWidth / ruler.clientWidth);
+                    scaleX = Math.max(0.2, scaleX);
+                    input.style.transform = "scaleX("+ scaleX +")";
+                    input.style.width = 100/scaleX + "%";
+                } else {
+                    input.style.transform = "none";
+                    input.style.width = "100%"; //'calc(100% - '+context+'px)';
+                }
+            }else{
+                let modalImgContainer = this.$refs.modalImgContainer;
+                let textInputWrapper = container.querySelector("#textInputWrapper");
+                let textInputBorderWrapper = container.querySelector("#textInputBorderWrapper");
+                if (content) {
+                    let lineWidth = bbox.height*ratio;
+                    var scaleY = Math.min(5,  lineWidth / ruler.clientHeight);
+                    //var scaleY = Math.min(5,  lineWidth / modalImgContainer.clientHeight);
+                    //var scaleY = Math.min(5,
+                    //    modalImgContainer.clientHeight / ruler.clientHeight);
+                    //var scaleY = Math.min(5,
+                    //    modalImgContainer.clientHeight / textInputWrapper.clientHeight) * 0.7;
+                    scaleY = Math.max(0.2, scaleY);
+                    verticalTextInput.style.transformOrigin = "top";
+                    verticalTextInput.style.transform = "scaleY("+ scaleY +")";
+                    //document.getElementById('vertical_text_input').style.height =
+                    //    100/scaleY + '%'; // not needed here
+                } else {
+                    verticalTextInput.style.transform = "none";
+                    verticalTextInput.style.height = modalImgContainer.clientHeight + "px";
+                }
+                textInputWrapper.style.height = modalImgContainer.clientHeight + "px";
+                // simulate an input field border to fix it to the actual size of the image
+                textInputBorderWrapper.style.width = verticalTextInput.clientWidth+"px";
+                //textInputBorderWrapper.style.width = verticalTextInput.offsetWidth+'px';
+                textInputBorderWrapper.style.height = modalImgContainer.clientHeight+"px";
+            }
+            container.removeChild(ruler);  // done its job
+        },
+
+        computeStyles() {
+            /*
+               Centers the image on the line (zoom + rotation)
+               Modifies input font size and height to match the image
+             */
+            let modalImgContainer = this.$refs.modalImgContainer;
+
+            let bbox = this.getRotatedLineBBox();
+            let hContext = 0.3; // vertical context added around the line, in percentage
+
+            //
+            let ratio = 1;
+            let lineHeight = 150;
+
+            if(this.mainTextDirection != "ttb")
+            {
+                ratio = modalImgContainer.clientWidth / (bbox.width + (2*bbox.height*hContext));
+                let MAX_HEIGHT = Math.round(Math.max(25, (window.innerHeight-230) / 3));
+                lineHeight = Math.max(30, Math.round(bbox.height*ratio));
+                if (lineHeight > MAX_HEIGHT) {
+                    // change the ratio so that the image can not get too big
+                    ratio = (MAX_HEIGHT/lineHeight)*ratio;
+                    lineHeight = MAX_HEIGHT;
+                }
+            }else{ // permutation of sizes for ttb text
+
+                // needed to fix height or ratio is nulled
+                modalImgContainer.style.height=String(window.innerHeight-230) + "px";
+                ratio = modalImgContainer.clientHeight / (bbox.height + (2*bbox.width*hContext));
+                let MAX_WIDTH = 30;
+                lineHeight = Math.max(30, Math.round(bbox.width*ratio));
+
+                if (lineHeight > MAX_WIDTH) {
+                    // change the ratio so that the image can not get too big
+                    ratio = (MAX_WIDTH/lineHeight)*ratio;
+                    lineHeight = MAX_WIDTH;
+                }
+            }
+
+            this.computeImgStyles(bbox, ratio, lineHeight, hContext);
+            this.computeInputStyles(bbox, ratio, lineHeight, hContext);
+        },
+
+        toggleVK() {
+            this.isVKEnabled = !this.isVKEnabled;
+            let vks = this.enabledVKs;
+            const keyboardEnabledInputs = document.getElementsByClassName(
+                "display-virtual-keyboard"
+            );
+            if (this.isVKEnabled) {
+                vks.push(this.documentId);
+                this.$store.commit("document/setEnabledVKs", vks);
+                userProfile.set("VK-enabled", vks);
+                for (const input of [...keyboardEnabledInputs]) {
+                    enableVirtualKeyboard(input);
+                    input.focus();
+                }
+            } else {
+                // Make sure we save changes made before we remove the VK
+                this.localTranscription = this.$refs.transInput.value;
+                vks.splice(vks.indexOf(this.documentId), 1);
+                this.$store.commit("document/setEnabledVKs", vks);
+                userProfile.set("VK-enabled", vks);
+                for (const input of [...keyboardEnabledInputs]) {
+                    input.onfocus = (e) => { e.preventDefault() };
+                    input.focus();
+                    input.blur();
+                    // delay is required to refocus, to ensure vk removed
+                    setTimeout(() => input.focus(), 200);
+                }
+            }
+        }
+    },
+});
+</script>

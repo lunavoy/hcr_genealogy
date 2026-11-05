@@ -1,0 +1,27 @@
+:root {
+  --color-page: #f5f5f5;
+  --color-surface: #ffffff;
+  --color-surface-muted: #eeeeee;
+  --color-header: #222222;
+  --color-text: #333333;
+  --color-text-muted: #666666;
+  --color-border: #cccccc;
+  --color-primary: #245ea8;
+  --color-primary-soft: #cfe3ff;
+  --color-warning: #d99000;
+  --color-success: #2a7d32;
+  --color-canvas: #444444;
+  --font-sans: system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, Consolas, monospace;
+  --font-size-body: 16px;
+  --font-size-small: 12px;
+  --font-size-title: 32px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --shadow-card: 0 1px 3px rgb(0 0 0 / 16%);
+}

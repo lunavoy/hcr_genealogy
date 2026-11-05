@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { "name": "1. Servidor (interface)", "type": "debugpy", "request": "launch", "module": "recognition.htr.server", "console": "integratedTerminal" },
+    { "name": "1b. Servidor sem modelo (so rotular)", "type": "debugpy", "request": "launch", "module": "recognition.htr.server", "args": ["--no-model"], "console": "integratedTerminal" },
+    { "name": "2. Preparar dataset", "type": "debugpy", "request": "launch", "module": "recognition.htr.training.prepare_dataset", "console": "integratedTerminal" },
+    { "name": "3. Treinar", "type": "debugpy", "request": "launch", "module": "recognition.htr.training.train", "console": "integratedTerminal" },
+    { "name": "4. Avaliar (CER)", "type": "debugpy", "request": "launch", "module": "recognition.htr.training.evaluate", "console": "integratedTerminal" }
+  ]
+}

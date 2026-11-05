@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<title>HTR Genealogia</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;height:100vh;background:#f5f5f5}
+header{display:flex;gap:8px;align-items:center;padding:8px 12px;background:#222;color:#eee}
+header #account{margin-left:auto;background:#fff;color:#222;border:0;border-radius:4px;padding:7px 12px}
+main{display:flex;height:calc(100vh - 48px);min-height:0} #workspace{grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr);min-height:0} #workspace>.toolbar{grid-column:1 / -1} #view{grid-column:1;min-width:0;min-height:0;overflow:auto;background:#444;overscroll-behavior:contain;cursor:grab} #view.panning{cursor:grabbing;user-select:none} #workspace>aside{grid-column:2;grid-row:2;min-height:0}
+#stack{position:relative;display:inline-block} canvas{display:block}
+#fg{position:absolute;top:0;left:0;cursor:crosshair}
+#pencil,#linePencil{display:none;position:absolute;z-index:3;padding:2px 6px;border:1px solid #765;
+  border-radius:4px;background:#fff3a8;font-size:18px;line-height:20px;box-shadow:0 1px 3px #333}
+aside{width:360px;padding:12px;border-left:1px solid #bbb;overflow:auto;background:#fff}
+nav{width:210px;padding:12px;background:#eee;border-right:1px solid #ccc;overflow:auto}
+nav.collapsed{width:38px;padding:8px 4px}nav.collapsed h3,nav.collapsed button:not(#menuCollapse){display:none}
+nav button{display:block;width:100%;margin:5px 0;padding:9px;text-align:left;border:0;background:#fff}
+nav button.active{background:#cfe3ff;font-weight:600}
+nav h3{font-size:12px;text-transform:uppercase;color:#666;margin:18px 4px 6px}
+nav .subitem{padding-left:22px}
+.home{padding:28px;flex:1;overflow:auto}.home h1{margin-top:0}.card{background:#fff;border:1px solid #ddd;border-radius:6px;padding:12px;margin:8px 0}
+.image-card{display:inline-flex;vertical-align:top;flex-direction:column;gap:8px;width:180px;margin:8px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:6px}
+.image-card img{width:180px;height:120px;object-fit:contain;background:#eee}
+.modal{display:none;position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.5);align-items:center;justify-content:center}
+.modal.open{display:flex}.auth-card{width:330px;background:#fff;border-radius:8px;padding:22px;box-shadow:0 4px 20px #222}
+.auth-card h2{margin:0 0 16px}.auth-card label{display:block;margin:10px 0 4px}.auth-card input{width:100%;box-sizing:border-box;padding:9px}
+.auth-card .primary{width:100%;padding:10px;margin-top:14px;background:#245ea8;color:#fff;border:0;border-radius:4px}
+.auth-links{display:flex;justify-content:space-between;margin-top:14px}.auth-links button{border:0;background:none;color:#245ea8;padding:0}
+.auth-close{float:right;border:0;background:none;font-size:20px}.auth-note{font-size:12px;color:#666;margin-top:12px}
+button{cursor:pointer}.cand,.word{display:flex;justify-content:space-between;width:100%;margin:3px 0;padding:6px;font-size:15px}
+.word{text-align:left;border:1px solid #ccc;background:#fff}.word.selected{background:#fff0a8}
+.word.reviewed{border-left:5px solid #2a2}.word.pending{border-left:5px solid #d90}
+#txt{width:100%;font-size:21px;box-sizing:border-box;margin:8px 0} #ok{width:100%;padding:9px}
+#msg{min-height:1.2em;margin-top:8px} small{color:#666}.toolbar{display:flex;gap:5px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<header>
+  <strong>HTR Genealogia</strong><span id="pageTitle">Início</span>
+  <button id="menuToggle" title="Recolher menu" aria-label="Recolher menu">☰</button>
+  <button id="account">Entrar / Cadastrar</button>
+</header>
+<div id="authModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <div class="auth-card">
+    <button id="authClose" class="auth-close" aria-label="Fechar">×</button>
+    <h2 id="authTitle">Entrar</h2>
+    <form id="authForm">
+      <label for="authEmail">E-mail</label>
+      <input id="authEmail" type="email" required autocomplete="email">
+      <label for="authPassword">Senha</label>
+      <input id="authPassword" type="password" required autocomplete="current-password">
+      <div id="authNameWrap" style="display:none">
+        <label for="authName">Nome</label>
+        <input id="authName" type="text" autocomplete="name">
+      </div>
+      <button class="primary" type="submit">Continuar</button>
+    </form>
+    <div class="auth-links"><button id="authSwitch" type="button">Criar cadastro</button><button id="authCancel" type="button">Cancelar</button></div>
+    <div class="auth-note">Demonstração visual. Login e cadastro ainda não estão funcionais.</div>
+    <div id="authMessage"></div>
+  </div>
+</div>
+<main>
+  <nav id="menu">
+    <button id="menuCollapse" title="Recolher menu" aria-label="Recolher menu">☰</button>
+    <button data-page="home" class="active">Início</button>
+    <h3>Analisar registros</h3>
+    <button class="subitem" data-page="new">Novo registro</button>
+    <button class="subitem" data-page="pending">Não analisados</button>
+    <button class="subitem" data-page="review">Em análise</button>
+    <button class="subitem" data-page="saved">Prontos</button>
+    <h3>Imagens</h3>
+    <button class="subitem" data-page="folders">Coleções</button>
+    <button class="subitem" data-page="groups">Grupos de registros</button>
+    <h3>Conta</h3>
+    <button class="subitem" id="logout" data-page="logout">Sair da minha conta</button>
+  </nav>
+  <section id="home" class="home"></section>
+  <section id="workspace" style="display:none;flex:1;min-width:0">
+  <div class="toolbar" style="padding:6px;background:#fff">
+    <select id="sel"></select>
+    <button id="zout">−</button><span id="zv">100%</span><button id="zin">+</button>
+    <label><input type="checkbox" id="snap" checked> ajustar à tinta</label>
+    <button id="saveRecord" disabled>Salvar registro</button>
+    <button id="editLayout" disabled>Editar linhas e palavras</button>
+    <button id="resegment" disabled>Reidentificar palavras pelas linhas</button>
+  </div>
+  <div id="view"><div id="stack"><canvas id="bg"></canvas><canvas id="fg"></canvas><button id="pencil" title="Editar caixa selecionada" aria-label="Editar caixa selecionada">✎</button><button id="linePencil" title="Editar linha selecionada" aria-label="Editar linha selecionada">✎</button></div></div>
+  <aside>
+    <h3 style="margin-top:0">Palavras do registro</h3>
+    <label>Grupo do registro (opcional)
+      <input id="groupId" placeholder="ex.: batismo-joao-1890">
+    </label>
+    <div id="groupInfo"><small>Registros de páginas diferentes podem usar o mesmo grupo.</small></div>
+    <div id="recordHelp"><small>Clique em “Novo registro” e desenhe o retângulo completo.</small></div>
+    <div id="words"></div>
+    <hr>
+    <div id="cands"><small>Selecione uma palavra para revisar.</small></div>
+    <input id="txt" autocomplete="off" spellcheck="false" placeholder="transcrição" disabled>
+      <div class="toolbar"><button id="prev" disabled>Anterior</button><button id="ok" disabled>Revisar e próxima</button><button id="next" disabled>Próxima</button><button id="deleteWord" disabled>Excluir palavra</button></div>
+    <div id="msg"></div>
+    <small>Na edição, clique numa caixa para selecioná-la ou desenhe uma nova palavra.</small>
+  </aside>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const bg=$('bg'),fg=$('fg'),bctx=bg.getContext('2d'),fctx=fg.getContext('2d');
+let img=new Image(),scale=1,name=null,record=null,selected=-1,selectedLine=-1,drag=null,pan=null,spaceDown=false,mode='idle';
+
+async function api(url,body,method){const requestMethod=method||(body!==undefined&&body!==null?'POST':'GET');const options={method:requestMethod};if(body!==undefined&&body!==null&&requestMethod!=='GET'&&requestMethod!=='HEAD'){options.headers={'Content-Type':'application/json'};options.body=JSON.stringify(body)}const r=await fetch(url,options);const raw=await r.text();let j;try{j=JSON.parse(raw)}catch(e){throw Error('Servidor retornou '+r.status+' '+r.statusText+' em '+url+'. Reinicie o servidor e atualize a página.')}if(!r.ok)throw Error((j.error||r.statusText)+' em '+url);return j}
+function layout(){bg.width=fg.width=Math.round(img.width*scale);bg.height=fg.height=Math.round(img.height*scale);bctx.drawImage(img,0,0,bg.width,bg.height);$('zv').textContent=Math.round(scale*100)+'%';paint()}
+function drawBox(b,fill,line){fctx.fillStyle=fill;fctx.strokeStyle=line;fctx.fillRect(b.x*scale,b.y*scale,b.w*scale,b.h*scale);fctx.strokeRect(b.x*scale,b.y*scale,b.w*scale,b.h*scale)}
+function drawLines(){(record.lines||[]).forEach((l,li)=>{const p=l.points;fctx.beginPath();fctx.moveTo(p[0][0]*scale,p[0][1]*scale);p.slice(1).forEach(q=>fctx.lineTo(q[0]*scale,q[1]*scale));fctx.closePath();fctx.fillStyle=li===selectedLine?'rgba(255,220,0,.18)':'rgba(40,120,255,.08)';fctx.strokeStyle=li===selectedLine?'#e90':'#48f';fctx.stroke();if(mode==='edit')p.forEach(q=>{fctx.fillStyle=li===selectedLine?'#e90':'#48f';fctx.fillRect(q[0]*scale-4,q[1]*scale-4,8,8)})})}
+function paint(){fctx.clearRect(0,0,fg.width,fg.height);if(record){drawBox(record.box,'rgba(40,120,255,.10)','#58f');drawLines();record.words.forEach((w,i)=>{drawBox(w.box,i===selected?'rgba(255,220,0,.55)':w.status==='reviewed'?'rgba(70,190,70,.35)':'rgba(255,170,0,.25)',i===selected?'#cc0':w.status==='reviewed'?'#2a2':'#d90');if(i===selected&&mode==='edit'){fctx.fillStyle='#cc0';fctx.fillRect((w.box.x+w.box.w-5)*scale,(w.box.y+w.box.h-5)*scale,10,10)}})}if(drag&&drag.box)drawBox(drag.box,'rgba(255,225,0,.3)','#cc0');else if(drag&&!drag.line)drawBox(drag,'rgba(255,225,0,.3)','#cc0');updatePencil()}
+function updatePencil(){const p=$('pencil'),lp=$('linePencil');p.style.display='none';lp.style.display='none';if(!record)return;if(selectedLine>=0){const pts=record.lines[selectedLine].points;const x=Math.max(...pts.map(q=>q[0])),y=Math.min(...pts.map(q=>q[1]));lp.style.display='block';lp.style.left=(x*scale+4)+'px';lp.style.top=Math.max(0,y*scale-26)+'px';return}if(selected<0)return;const b=record.words[selected].box;p.style.display='block';p.style.left=Math.max(0,(b.x+b.w)*scale+4)+'px';p.style.top=Math.max(0,(b.y-26)*scale)+'px';p.title=mode==='edit'?'Arraste a caixa ou o canto para redimensionar':'Editar caixa selecionada'}
+function renderWords(){const el=$('words');el.textContent='';if(!record)return;record.words.forEach((w,i)=>{const b=document.createElement('button');b.className='word '+w.status+(i===selected?' selected':'');b.innerHTML='<span>'+((i+1)+'. '+(w.text||w.predicted||'(sem leitura)'))+'</span><span>'+Math.round((w.confidence||0)*100)+'%</span>';b.onclick=()=>selectWord(i);el.append(b)})}
+async function updateGroupInfo(){if(!record||!record.group_id){$('groupInfo').innerHTML='<small>Sem grupo. Use o mesmo nome para ligar páginas do mesmo registro.</small>';return}try{const all=await api('/api/records/all');const same=all.filter(r=>r.group_id===record.group_id);$('groupInfo').textContent='Grupo “'+record.group_id+'”: '+same.length+' página(s) salva(s).'}catch(e){$('groupInfo').textContent='Grupo “'+record.group_id+'” salvo.'}}
+function showWord(){if(!record||selected<0)return;const w=record.words[selected];$('txt').disabled=false;$('txt').value=w.text||w.predicted||'';$('txt').focus();$('cands').textContent='';(w.candidates||[]).forEach(k=>{const b=document.createElement('button');b.className='cand';b.textContent=k.text+' — '+Math.round(k.confidence*100)+'%';b.onclick=()=>{$('txt').value=k.text};$('cands').append(b)});$('prev').disabled=selected===0;$('next').disabled=selected===record.words.length-1;$('ok').disabled=false;$('deleteWord').disabled=false}
+function selectWord(i){selected=i;selectedLine=-1;mode='review';renderWords();paint();showWord()}
+function editSelected(){if(selected<0||!record)return;mode='edit';$('recordHelp').textContent='Edite a caixa selecionada: arraste-a ou use o canto amarelo para redimensionar.';paint()}
+function editLine(){if(selectedLine<0||!record)return;mode='edit';$('recordHelp').textContent='Edite a linha selecionada arrastando os nós laranja.';paint()}
+async function load(n){name=n;record=null;selected=-1;selectedLine=-1;mode='idle';$('saveRecord').disabled=true;$('editLayout').disabled=true;$('resegment').disabled=true;$('words').textContent='';img=new Image();img.onload=async()=>{scale=Math.min(1,($('view').clientWidth-20)/img.width);layout();const rs=await api('/api/records?image='+encodeURIComponent(n));if(rs.length){record=rs[rs.length-1];record.lines=record.lines||[];$('groupId').value=record.group_id||'';mode='edit';$('saveRecord').disabled=false;$('editLayout').disabled=false;$('resegment').disabled=record.lines.length===0;renderWords();paint();updateGroupInfo()}};img.src='/api/image/'+n.split('/').map(encodeURIComponent).join('/')}
+function beginDraw(){mode='draw-record';record=null;selected=-1;selectedLine=-1;$('groupId').value='';$('saveRecord').disabled=true;$('editLayout').disabled=true;$('resegment').disabled=true;$('words').textContent='';$('recordHelp').textContent='Desenhe o retângulo completo do registro. Registros já salvos não serão apagados.';paint()}
+fg.onmousedown=e=>{if(mode!=='draw-record'&&mode!=='edit')return;const px=e.offsetX/scale,py=e.offsetY/scale;if(mode==='edit'&&record){for(let li=0;li<(record.lines||[]).length;li++){const points=record.lines[li].points;const minX=Math.min(...points.map(q=>q[0]))-14,maxX=Math.max(...points.map(q=>q[0]))+14,minY=Math.min(...points.map(q=>q[1]))-14,maxY=Math.max(...points.map(q=>q[1]))+14;if(px>=minX&&px<=maxX&&py>=minY&&py<=maxY){for(let pi=0;pi<points.length;pi++)if(Math.hypot(px-points[pi][0],py-points[pi][1])<14){selectedLine=li;selected=-1;drag={line:li,node:pi};paint();return}selectedLine=li;selected=-1;paint();return}}const i=record.words.findIndex(w=>px>=w.box.x&&px<=w.box.x+w.box.w&&py>=w.box.y&&py<=w.box.y+w.box.h);if(i>=0){selected=i;selectedLine=-1;const w=record.words[i],resize=px>=w.box.x+w.box.w-12&&py>=w.box.y+w.box.h-12;drag={word:i,resize,startX:px,startY:py,box:{...w.box}};renderWords();paint();return}}drag={x0:px,y0:py,x:0,y:0,w:0,h:0}}
+fg.onmousemove=e=>{if(!drag)return;const x=e.offsetX/scale,y=e.offsetY/scale;if(drag.line!==undefined){record.lines[drag.line].points[drag.node]=[Math.round(x),Math.round(y)];paint();return}if(drag.word!==undefined){const w=record.words[drag.word];if(drag.resize){w.box.w=Math.max(4,Math.round(drag.box.w+x-drag.startX));w.box.h=Math.max(4,Math.round(drag.box.h+y-drag.startY))}else{w.box.x=Math.max(0,Math.round(drag.box.x+x-drag.startX));w.box.y=Math.max(0,Math.round(drag.box.y+y-drag.startY))}paint();return}Object.assign(drag,{x:Math.min(drag.x0,x),y:Math.min(drag.y0,y),w:Math.abs(x-drag.x0),h:Math.abs(y-drag.y0)});paint()}
+window.onmouseup=async e=>{if(!drag)return;const b=drag;drag=null;if(b.line!==undefined||b.word!==undefined){renderWords();paint();return}if(b.w<5||b.h<5){paint();return}if(mode==='draw-record'){try{$('recordHelp').textContent='Detectando linhas horizontais e palavras…';record=await api('/api/records/analyze',{image:name,box:b});mode='edit';$('saveRecord').disabled=false;$('editLayout').disabled=false;$('resegment').disabled=record.lines.length===0;renderWords();paint();if(record.words.length)selectWord(0);$('recordHelp').textContent='Rascunho não salvo. Linhas detectadas; ajuste e depois clique em Salvar registro.'}catch(e){$('msg').textContent=e.message}}else if(mode==='edit'){record.words.push({id:'word-'+Date.now(),line:0,box:{x:b.x,y:b.y,w:b.w,h:b.h},predicted:'',confidence:0,text:'',status:'pending',candidates:[]});renderWords();paint()}}
+document.querySelector('[data-page="new"]').onclick=()=>showPage('new');
+$('pencil').onclick=e=>{e.stopPropagation();editSelected()};
+$('linePencil').onclick=e=>{e.stopPropagation();editLine()};
+$('saveRecord').onclick=async()=>{if(!record)return;record.group_id=$('groupId').value.trim();try{record=await api('/api/records/save',record);$('recordHelp').textContent='Registro salvo. Você pode continuar editando e salvar novamente.';$('msg').textContent='Salvo.';updateGroupInfo()}catch(e){$('msg').textContent=e.message}};
+$('editLayout').onclick=()=>{mode=mode==='edit'?'review':'edit';$('recordHelp').textContent=mode==='edit'?'Edite caixas e nós azuis das linhas.':'Modo de revisão.'};
+$('resegment').onclick=async()=>{if(!record)return;record=await api('/api/records/'+encodeURIComponent(record.id)+'/resegment',record,'POST');selected=-1;renderWords();paint();$('recordHelp').textContent='Palavras reidentificadas usando as linhas corrigidas. Clique em Salvar registro para manter.'};
+$('deleteWord').onclick=async()=>{if(!record||selected<0)return;record.words.splice(selected,1);selected=-1;$('txt').value='';$('txt').disabled=true;$('deleteWord').disabled=true;$('cands').textContent='Palavra excluída do rascunho. Clique em Salvar registro para manter a alteração.';renderWords();paint()};
+async function saveWord(){if(!record||selected<0)return;const w=record.words[selected];w.text=$('txt').value;w.status='reviewed';renderWords();paint();if(selected<record.words.length-1)selectWord(selected+1);else $('msg').textContent='Palavra revisada no rascunho. Clique em Salvar registro.'}
+$('ok').onclick=saveWord;$('txt').onkeydown=e=>{if(e.key==='Enter')saveWord()};$('prev').onclick=()=>selectWord(selected-1);$('next').onclick=()=>selectWord(selected+1);
+function zoomAt(factor,cx,cy){const view=$('view'),old=scale,next=Math.max(.1,Math.min(8,old*factor));if(next===old)return;const x=(view.scrollLeft+cx)/old,y=(view.scrollTop+cy)/old;scale=next;layout();view.scrollLeft=Math.max(0,x*next-cx);view.scrollTop=Math.max(0,y*next-cy)}
+$('zin').onclick=()=>zoomAt(1.25,$('view').clientWidth/2,$('view').clientHeight/2);$('zout').onclick=()=>zoomAt(.8,$('view').clientWidth/2,$('view').clientHeight/2);$('sel').onchange=e=>load(e.target.value);
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!e.target.matches('input,textarea,select,button')){spaceDown=true;e.preventDefault()}});document.addEventListener('keyup',e=>{if(e.code==='Space')spaceDown=false});
+$('view').addEventListener('wheel',e=>{if(e.ctrlKey||e.metaKey){e.preventDefault();zoomAt(e.deltaY<0?1.1:.9,e.offsetX,e.offsetY)}},{passive:false});
+$('view').addEventListener('mousedown',e=>{const canPan=e.button===1||(e.button===0&&spaceDown);if(!canPan)return;e.preventDefault();pan={x:e.clientX,y:e.clientY,left:$('view').scrollLeft,top:$('view').scrollTop};$('view').classList.add('panning')});
+window.addEventListener('mousemove',e=>{if(!pan)return;$('view').scrollLeft=pan.left-(e.clientX-pan.x);$('view').scrollTop=pan.top-(e.clientY-pan.y)});
+window.addEventListener('mouseup',e=>{if(!pan)return;pan=null;$('view').classList.remove('panning')});
+let authMode='login';
+function openAuth(mode){authMode=mode;$('authTitle').textContent=mode==='login'?'Entrar':'Criar cadastro';$('authSwitch').textContent=mode==='login'?'Criar cadastro':'Já tenho uma conta';$('authNameWrap').style.display=mode==='login'?'none':'block';$('authMessage').textContent='';$('authModal').classList.add('open');$('authEmail').focus()}
+function closeAuth(){$('authModal').classList.remove('open')}
+$('account').onclick=()=>openAuth('login');$('authClose').onclick=closeAuth;$('authCancel').onclick=closeAuth;
+$('authSwitch').onclick=()=>openAuth(authMode==='login'?'signup':'login');
+$('authModal').onclick=e=>{if(e.target===$('authModal'))closeAuth()};
+$('authForm').onsubmit=e=>{e.preventDefault();$('authMessage').textContent=authMode==='login'?'Demonstração: o login ainda não está conectado.':'Demonstração: o cadastro ainda não está conectado.';$('authMessage').style.color='#765';};
+document.querySelectorAll('#menuToggle,#menuCollapse').forEach(b=>b.onclick=()=>{$('menu').classList.toggle('collapsed')});
+function imageCard(name, action, label){return '<div class="image-card"><img src="/api/image/'+name.split('/').map(encodeURIComponent).join('/')+'" alt="'+name+'"><span>'+name+'</span><button data-'+action+'="'+name+'">'+label+'</button></div>'}
+function openWorkspace(imageName){showPage('workspace');$('sel').value=imageName;load(imageName)}
+async function renderPage(page){const homePages=['home','pending','folders','groups','logout'];$('workspace').style.display=homePages.includes(page)?'none':'grid';$('home').style.display=homePages.includes(page)?'block':'none';$('pageTitle').textContent=page==='home'?'Início':page==='new'?'Novo registro':page==='folders'?'Coleções':page==='groups'?'Grupos de registros':page==='pending'?'Não analisados':page==='saved'?'Prontos':'Em análise';if(page==='workspace')return;if(page==='new'){beginDraw();return}if(page==='logout'){$('home').innerHTML='<h1>Sair da minha conta</h1><div class="card"><p>Esta é uma demonstração visual. A saída da conta ainda não está conectada.</p><button id="backHome">Voltar ao início</button></div>';$('backHome').onclick=()=>showPage('home');return}if(page==='home'){const all=await api('/api/records/all');$('home').innerHTML='<h1>Página inicial</h1><p>Escolha uma ação para começar.</p><div class="card"><h3>Analisar registros</h3><p>Crie um novo registro ou continue uma análise em andamento.</p><button data-go="new">Novo registro</button> <button data-go="pending">Não analisados</button> <button data-go="review">Em análise</button> <button data-go="saved">Prontos</button></div><div class="card"><h3>Coleções</h3><p>Organize e abra as imagens por coleção.</p><button data-go="folders">Abrir coleções</button></div><div class="card"><b>Registros salvos:</b> '+all.length+'</div>';$('home').querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>showPage(b.dataset.go));return}if(page==='pending'){const all=await api('/api/records/all'),images=await api('/api/images'),used=new Set(all.map(r=>r.source_image));$('home').innerHTML='<h1>Não analisados</h1>'+images.filter(n=>!used.has(n)).map(n=>imageCard(n,'new','Começar registro')).join('')||'<p>Nenhuma imagem sem registro.</p>';$('home').querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>openWorkspace(b.dataset.new));return}if(page==='folders'){const images=await api('/api/images'),folders={};images.forEach(n=>{const parts=n.split('/');const folder=parts.length>1?parts.slice(0,-1).join('/'):'Coleção avulsa';(folders[folder]||(folders[folder]=[])).push(n)});$('home').innerHTML='<h1>Coleções</h1><p>Cada subpasta dentro de <code>data/raw</code> aparece como uma coleção.</p>'+Object.entries(folders).map(([folder,files])=>'<div class="card"><h3>'+folder+'</h3><p>'+files.length+' imagem(ns)</p>'+files.map(n=>imageCard(n,'open','Abrir')).join('')+'</div>').join('')||'<p>Nenhuma imagem encontrada.</p>';$('home').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openWorkspace(b.dataset.open));return}if(page==='groups'){const all=await api('/api/records/all'),groups={};all.forEach(r=>{const key=r.group_id||'Sem grupo';(groups[key]||(groups[key]=[])).push(r)});$('home').innerHTML='<h1>Grupos de registros</h1>'+Object.entries(groups).map(([g,rs])=>'<div class="card"><b>'+g+'</b><br>'+rs.map(r=>r.source_image).join('<br>')+'</div>').join('');return}const all=await api('/api/records/all');const rows=page==='saved'?all:all.filter(r=>r.status==='pending');$('home').innerHTML='<h1>'+$('pageTitle').textContent+'</h1>'+rows.map(r=>'<div class="image-card"><img src="/api/image/'+r.source_image.split('/').map(encodeURIComponent).join('/')+'" alt="'+r.source_image+'"><span>'+r.source_image+'</span><button data-open="'+r.source_image+'">Abrir</button></div>').join('')||'<p>Nenhum registro nesta categoria.</p>';$('home').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openWorkspace(b.dataset.open))}
+function showPage(page, addHistory=true){if(addHistory)history.pushState({page},'',page==='home'?'/':'/?page='+encodeURIComponent(page));if(page==='workspace'){$('home').style.display='none';$('workspace').style.display='flex';return renderPage(page)}return renderPage(page)}
+window.onpopstate=e=>showPage((e.state&&e.state.page)||new URLSearchParams(location.search).get('page')||'home',false);
+document.querySelectorAll('#menu button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#menu button').forEach(x=>x.classList.remove('active'));b.classList.add('active');showPage(b.dataset.page)});
+$('sel').onchange=()=>{if($('sel').value)load($('sel').value)};
+(async()=>{const list=await api('/api/images');list.forEach(n=>{const o=document.createElement('option');o.value=n;o.textContent=n;$('sel').append(o)});const initial=new URLSearchParams(location.search).get('page')||'home';history.replaceState({page:initial},'',initial==='home'?'/':'/?page='+encodeURIComponent(initial));showPage(initial,false)})()
+</script>
+</body>
+</html>

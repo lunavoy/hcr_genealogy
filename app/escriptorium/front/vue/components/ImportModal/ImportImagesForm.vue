@@ -1,0 +1,103 @@
+<template>
+    <div>
+        <h3 v-translate>
+            Import images
+        </h3>
+        <ImageDropzone
+            id="escr-drop-zone"
+            :options="{
+                ...dropzoneOptions,
+                url: imageUploadURL,
+                headers: { 'X-Csrftoken': getCsrfToken },
+            }"
+            :use-custom-slot="true"
+            @vdropzone-processing="() => setImagesLoading(true)"
+            @vdropzone-queue-complete="() => queueComplete()"
+        >
+            <UploadIcon />
+            <h4 v-translate>
+                Drag and drop files here
+            </h4>
+            <p v-translate>
+                Files supported: JPG, PNG, TIFF
+            </p>
+            <p v-translate>
+                or
+            </p>
+            <button
+                v-translate
+                type="button"
+                class="escr-button escr-button--large escr-button--primary"
+            >
+                Choose files
+            </button>
+        </ImageDropzone>
+    </div>
+</template>
+
+<script>
+import { mapActions, mapState } from "vuex";
+import UploadIcon from "../Icons/UploadIcon/UploadIcon.vue";
+import ImageDropzone from "vue2-dropzone";
+import { thumbnail } from "../../../src/util/dropzone";
+import "vue2-dropzone/dist/vue2Dropzone.min.css";
+import { SCRIPT_NAME } from "../../../src/scriptname.js";
+
+export default {
+    name: "EscrImportImagesForm",
+    components: {
+        ImageDropzone,
+        UploadIcon,
+    },
+    props: {
+        invalid: {
+            type: Object,
+            required: true,
+        },
+        onImportComplete: {
+            type: Function,
+            required: true,
+        }
+    },
+    data: function() {
+        return {
+            dropzoneOptions: {
+                acceptedFiles: "image/jpeg,image/png,image/tiff",
+                parallelUploads: 1,
+                paramName: "image",
+                timeout: 0,
+                // TIFFs can't be decoded by the browser, and dropzone reports that
+                // through the thumbnail callback rather than a separate error path
+                thumbnail,
+            }
+        };
+    },
+    computed: {
+        ...mapState({
+            documentId: (state) => state.document.id,
+        }),
+        /**
+         * Use the document ID from vuex store state to get the parts upload URL.
+         */
+        imageUploadURL() {
+            return SCRIPT_NAME + `/api/documents/${this.documentId}/parts/`;
+        },
+        getCsrfToken() {
+            return document.cookie.match("(^|;)\\s*" + "csrftoken" + "\\s*=\\s*([^;]+)")?.pop()
+        }
+    },
+    methods: {
+        ...mapActions("forms", [
+            "handleGenericInput",
+        ]),
+        setImagesLoading(value) {
+            this.handleGenericInput({ form: "import", field: "imagesLoading", value })
+        },
+        queueComplete() {
+            this.setImagesLoading(false);
+            this.handleGenericInput({ form: "import", field: "imagesComplete", value: true });
+            this.onImportComplete();
+        }
+    }
+}
+</script>

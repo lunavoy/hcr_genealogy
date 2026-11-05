@@ -1,0 +1,15 @@
+flask>=3.0
+opencv-python-headless>=4.9
+numpy>=1.26
+pillow>=10.0
+# --- treino / reconhecimento (instale torch conforme sua GPU: https://pytorch.org) ---
+torch>=2.2
+torchvision>=0.17
+transformers>=4.41
+accelerate>=0.26
+jiwer>=3.0
+# --- layout analysis and historical handwriting recognition ---
+kraken>=7.0
+shapely>=2.0
+# --- dev ---
+pytest>=8.0
