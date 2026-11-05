@@ -13,6 +13,13 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     a = ap.parse_args()
 
+    if not config.LABELS_CSV.exists():
+        raise SystemExit(
+            f"{config.LABELS_CSV} ainda nao existe. "
+            "Coloque imagens em dataset/originals, inicie o servidor, "
+            "confirme as transcricoes humanas e tente novamente."
+        )
+
     with open(config.LABELS_CSV, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if not rows:

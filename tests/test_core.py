@@ -88,9 +88,11 @@ def test_record_flow(tmp_data):
     word = record["words"][0]
     word["text"] = "Joze"
     word["status"] = "reviewed"
+    word["box"] = {key: value + 0.4 for key, value in word["box"].items()}
     saved = c.post("/api/records/save", json=record)
     assert saved.status_code == 200
     assert saved.json["words"][0]["status"] == "reviewed"
+    assert all(isinstance(value, int) for value in saved.json["words"][0]["box"].values())
     assert c.get("/api/records?image=p1.png").json[0]["id"] == record["id"]
     moved = dict(word["box"])
     moved["x"] += 2

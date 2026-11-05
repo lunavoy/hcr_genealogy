@@ -32,12 +32,42 @@ meu-htr/
 
 ## Instalação (VS Code)
 
+No Windows, o instalador abaixo prepara todos os componentes locais: ambiente
+Python, dependências de IA/Kraken, dependências do Node, build do front-end,
+pastas de dados e configuração local do eScriptorium. Ele é idempotente:
+execuções seguintes preservam o ambiente virtual, o `variables.env` e os dados
+já existentes.
+
+Pré-requisitos: Python 3.10+, Node.js 20+ e Docker Desktop iniciado (o Docker
+pode ser ignorado durante a instalação com `-SkipDocker`).
+
+O instalador mantém o ambiente virtual, caches de pacotes e cache de modelos
+em `F:\hcr_genealogy` (na pasta `.cache`), evitando consumir espaço no disco
+do sistema.
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\install.ps1
+```
+
+Para também construir e iniciar o eScriptorium:
+
+```powershell
+.\scripts\install.ps1 -StartEscriptorium
+```
+
+Se o Docker ainda não estiver instalado, prepare o restante primeiro:
+
+```powershell
+.\scripts\install.ps1 -SkipDocker
+```
+
 ```bash
 python -m venv .venv
 .venv\Scripts\activate          # Windows  |  source .venv/bin/activate (Linux/Mac)
 pip install -r requirements.txt # com GPU NVIDIA, instale o torch antes: https://pytorch.org
 pip install -e .
-pytest                          # deve passar 5 testes
+pytest                          # valida o ambiente instalado
 ```
 
 ### Kraken e eScriptorium
@@ -72,8 +102,8 @@ docker compose ps
 ```
 
 Abra `http://localhost:8080`. O usuário inicial local é `admin` e a senha é
-definida em `app/escriptorium/variables.env`; altere-a antes de expor o
-serviço fora da máquina. Para parar os serviços:
+gerada pelo instalador em `app/escriptorium/variables.env`; altere-a antes de
+expor o serviço fora da máquina. Para parar os serviços:
 
 ```powershell
 docker compose down
@@ -115,8 +145,7 @@ OpenCV, reconhecimento TrOCR e treinamento.
 Terminal 1 — serviço Python de IA:
 
 ```powershell
-cd "C:\Users\lccla\Downloads\htr-genealogia\htr-genealogia"
-& "..\.venv\Scripts\python.exe" -m recognition.htr.server --no-model
+& ".\.venv\Scripts\python.exe" -m recognition.htr.server --no-model
 ```
 
 Terminal 2 — API Node pública:
@@ -157,7 +186,9 @@ Para validar a compilação:
 npm run build
 ```
 
-O proxy do Vite encaminha `/api` para o Flask em `http://127.0.0.1:5000`.
+O proxy do Vite encaminha `/api`, `/recognize` e `/detect-layout` para a API
+Node em `http://127.0.0.1:5100`; a API Node encaminha as operações ao serviço
+Python em `http://127.0.0.1:5000`.
 Os padrões visuais estão documentados em `docs/layout-mapping.md`.
 
 ### Reconhecimento em português

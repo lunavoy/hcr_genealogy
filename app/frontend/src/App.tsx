@@ -99,13 +99,14 @@ function App() {
     if (event.button !== 0 || (event.currentTarget !== fgRef.current) || (mode !== 'draw' && mode !== 'edit')) return
     const point = canvasPoint(event)
     if (mode === 'edit' && record) {
+      const wordIndex = record.words.findIndex(word => point.x >= word.box.x && point.x <= word.box.x + word.box.w && point.y >= word.box.y && point.y <= word.box.y + word.box.h)
+      if (wordIndex >= 0) {
+        const word = record.words[wordIndex]; setSelected(wordIndex); setSelectedLine(-1); dragRef.current = { kind: point.x >= word.box.x + word.box.w - 14 && point.y >= word.box.y + word.box.h - 14 ? 'resize' : 'word', startX: point.x, startY: point.y, box: { ...word.box } }; return
+      }
       for (let li = 0; li < record.lines.length; li++) {
         const points = record.lines[li].points; const hit = points.findIndex(node => Math.hypot(point.x - node[0], point.y - node[1]) < 14)
-        const inside = point.x >= Math.min(...points.map(p => p[0])) - 14 && point.x <= Math.max(...points.map(p => p[0])) + 14 && point.y >= Math.min(...points.map(p => p[1])) - 14 && point.y <= Math.max(...points.map(p => p[1])) + 14
-        if (inside) { setSelectedLine(li); setSelected(-1); dragRef.current = hit >= 0 ? { kind: 'line', line: li, node: hit, startX: point.x, startY: point.y } : null; return }
+        if (hit >= 0) { setSelectedLine(li); setSelected(-1); dragRef.current = { kind: 'line', line: li, node: hit, startX: point.x, startY: point.y }; return }
       }
-      const wordIndex = record.words.findIndex(word => point.x >= word.box.x && point.x <= word.box.x + word.box.w && point.y >= word.box.y && point.y <= word.box.y + word.box.h)
-      if (wordIndex >= 0) { const word = record.words[wordIndex]; setSelected(wordIndex); setSelectedLine(-1); dragRef.current = { kind: point.x >= word.box.x + word.box.w - 14 && point.y >= word.box.y + word.box.h - 14 ? 'resize' : 'word', startX: point.x, startY: point.y, box: { ...word.box } }; return }
     }
     dragRef.current = { kind: 'draw', startX: point.x, startY: point.y, box: { x: point.x, y: point.y, w: 0, h: 0 } }
   }
@@ -117,7 +118,14 @@ function App() {
   }
   const finishCanvas = async () => {
     const drag = dragRef.current; dragRef.current = null; if (!drag || !drag.box || drag.box.w < 5 || drag.box.h < 5) return
-    if (drag.kind === 'draw' && currentImage) {
+    if (drag.kind === 'draw' && currentImage && record && mode === 'edit') {
+      const words = [...record.words, {
+        id: `word-new-${Date.now()}`, line: selectedLine >= 0 ? selectedLine : 0,
+        box: drag.box, predicted: '', confidence: 0, text: '', status: 'pending', candidates: [],
+      }]
+      setRecord({ ...record, words }); setSelected(words.length - 1); setSelectedLine(-1)
+      setMessage('Destaque criado. Digite a transcrição e clique em Revisar palavra.')
+    } else if (drag.kind === 'draw' && currentImage) {
       try { const analyzed = await api<RecordData>('/api/records/analyze', { image: currentImage, box: drag.box }); setRecord(analyzed); setMode('edit'); setMessage('Rascunho não salvo. Corrija e clique em Salvar registro.') } catch (error) { setMessage(error instanceof Error ? error.message : 'Falha ao analisar registro.') }
     }
   }
@@ -150,7 +158,7 @@ function App() {
 
   function Editor() {
     const selectedWord = record && selected >= 0 ? record.words[selected] : null
-    return <main className="editor"><div className="editor-toolbar"><select value={currentImage} onChange={event => void openImage(event.target.value)}>{images.map(name => <option key={name}>{name}</option>)}</select><button onClick={() => zoom(.8)} type="button">−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => zoom(1.25)} type="button">+</button><button disabled={!record} onClick={() => setMode(mode === 'edit' ? 'review' : 'edit')} type="button">Editar linhas e palavras</button><button disabled={!record} onClick={() => void resegment()} type="button">Reidentificar palavras</button><button disabled={!record} onClick={() => void save()} type="button">Salvar registro</button></div><div className="editor-main"><div className="canvas-view" ref={viewRef} onMouseDown={startPan} onMouseMove={movePan} onMouseUp={stopPan} onMouseLeave={stopPan} onWheel={event => { if (event.ctrlKey) { event.preventDefault(); zoom(event.deltaY < 0 ? 1.1 : .9) } }}><div className="canvas-stack"><canvas ref={bgRef} /><canvas ref={fgRef} onMouseDown={startCanvas} onMouseMove={moveCanvas} onMouseUp={() => void finishCanvas()} /></div></div><aside className="review-panel"><h2>Palavras do registro</h2><label>Grupo<input value={groupId} onChange={event => setGroupId(event.target.value)} placeholder="ex.: batismo-joao-1890" /></label>{record?.words.map((word, index) => <button className={`word ${word.status} ${index === selected ? 'selected' : ''}`} key={word.id} onClick={() => { setSelected(index); setSelectedLine(-1); setMode('review') }} type="button"><span>{index + 1}. {word.text || word.predicted || '(sem leitura)'}</span><small>{Math.round(word.confidence * 100)}%</small></button>)}{selectedWord && <><div className="candidates">{selectedWord.candidates.map(candidate => <button key={candidate.text} onClick={() => updateText(candidate.text)} type="button">{candidate.text} — {Math.round(candidate.confidence * 100)}%</button>)}</div><input value={selectedWord.text || selectedWord.predicted} onChange={event => updateText(event.target.value)} /><button onClick={() => updateText(selectedWord.text)} type="button">Revisar palavra</button><button onClick={deleteWord} type="button">Excluir palavra</button></>}{message && <p className="message">{message}</p>}</aside></div></main>
+    return <main className="editor"><div className="editor-toolbar"><select value={currentImage} onChange={event => void openImage(event.target.value)}>{images.map(name => <option key={name}>{name}</option>)}</select><button onClick={() => zoom(.8)} type="button">−</button><span>{Math.round(scale * 100)}%</span><button onClick={() => zoom(1.25)} type="button">+</button><button disabled={!record} title={!record ? 'Desenhe primeiro o retângulo completo do registro na imagem.' : undefined} onClick={() => setMode(mode === 'edit' ? 'review' : 'edit')} type="button">Editar linhas e palavras</button><button disabled={!record} title={!record ? 'Desenhe primeiro o retângulo completo do registro na imagem.' : undefined} onClick={() => void resegment()} type="button">Reidentificar palavras</button><button disabled={!record} title={!record ? 'Desenhe primeiro o retângulo completo do registro na imagem.' : undefined} onClick={() => void save()} type="button">Salvar registro</button>{!record && <span className="editor-hint">1. Arraste na imagem para criar o registro; depois os botões de edição serão ativados.</span>}</div><div className="editor-main"><div className="canvas-view" ref={viewRef} onMouseDown={startPan} onMouseMove={movePan} onMouseUp={stopPan} onMouseLeave={stopPan} onWheel={event => { if (event.ctrlKey) { event.preventDefault(); zoom(event.deltaY < 0 ? 1.1 : .9) } }}><div className="canvas-stack"><canvas ref={bgRef} /><canvas ref={fgRef} onMouseDown={startCanvas} onMouseMove={moveCanvas} onMouseUp={() => void finishCanvas()} /></div></div><aside className="review-panel"><h2>Palavras do registro</h2><label>Grupo<input value={groupId} onChange={event => setGroupId(event.target.value)} placeholder="ex.: batismo-joao-1890" /></label>{record?.words.map((word, index) => <button className={`word ${word.status} ${index === selected ? 'selected' : ''}`} key={word.id} onClick={() => { setSelected(index); setSelectedLine(-1); setMode('review') }} type="button"><span>{index + 1}. {word.text || word.predicted || '(sem leitura)'}</span><small>{Math.round(word.confidence * 100)}%</small></button>)}{selectedWord && <><div className="candidates">{selectedWord.candidates.map(candidate => <button key={candidate.text} onClick={() => updateText(candidate.text)} type="button">{candidate.text} — {Math.round(candidate.confidence * 100)}%</button>)}</div><input value={selectedWord.text || selectedWord.predicted} onChange={event => updateText(event.target.value)} /><button onClick={() => updateText(selectedWord.text)} type="button">Revisar palavra</button><button onClick={deleteWord} type="button">Excluir palavra</button></>}{message && <p className="message">{message}</p>}</aside></div></main>
   }
 }
 

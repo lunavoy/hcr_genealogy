@@ -140,11 +140,21 @@ def create_app(use_model: bool = True) -> Flask:
                         box=tuple(old["box"].values()))
         image = get_image(record["source_image"])
         for word in record.get("words", []):
+            raw_box = word.get("box")
+            if not raw_box:
+                if word.get("status") == "reviewed" and word.get("text"):
+                    raise ValueError("Palavra revisada sem retângulo.")
+                continue
+            box = imaging.clamp_box(
+                tuple(int(round(float(raw_box[key]))) for key in ("x", "y", "w", "h")),
+                image.shape,
+            )
+            word["box"] = dict(zip(("x", "y", "w", "h"), box))
             if word.get("status") == "reviewed" and word.get("text"):
                 store.save_confirmation(
                     source=record["source_image"],
-                    box=tuple(word["box"].values()),
-                    crop=imaging.crop_pil(image, tuple(word["box"].values())),
+                    box=box,
+                    crop=imaging.crop_pil(image, box),
                     text=word["text"], predicted=word.get("predicted", ""),
                     confidence=float(word.get("confidence", 0)))
         record["status"] = "reviewed" if record.get("words") and all(
